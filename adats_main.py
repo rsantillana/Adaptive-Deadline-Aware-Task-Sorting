@@ -1,227 +1,339 @@
 """
 Adaptive Deadline-Aware Task Sorting (ADATS)
+Syllabus Upload Version - Fixed File Path Version
 
-This program helps a student taking 5 classes:
-1. Computer Science
-2. Math
-3. English
-4. Computer Architecture
-5. Algorithm
-
-The program does two main things:
-1. Creates a homework/study schedule using a priority queue.
-2. Predicts each class grade and the probability of earning an A.
-
-ADATS considers:
-- Due dates
-- Assignment difficulty
-- Estimated hours needed
-- Quiz/exam study time
-- Homework completion rate
-- Study time completion rate
+This version fixes common upload/path problems on Windows:
+- Removes quotation marks around file paths
+- Checks if the file exists before opening it
+- Supports .txt and .pdf files
+- Gives clearer error messages
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 import heapq
+import os
+import re
 
 
 @dataclass
 class Task:
     name: str
     class_name: str
+    due_date: str
     days_until_due: int
-    difficulty: int          # 1 = easy, 10 = very hard
+    difficulty: int
     hours_needed: float
-    task_type: str           # homework, quiz_study, exam_study
+    task_type: str
 
 
-@dataclass
-class ClassProgress:
-    class_name: str
-    current_score: float
-    completed_homework: int
-    total_homework: int
-    actual_study_hours: float
-    required_study_hours: float
+def clean_file_path(file_path: str) -> str:
+    """
+    Fixes common Windows path input issues.
+
+    Example problem:
+    User enters:
+    "C:\\Users\\renza\\Downloads\\CS460_Course_syllabus (2).pdf"
+
+    The quotation marks become part of the path and Python cannot find the file.
+    This function removes those quotation marks.
+    """
+
+    file_path = file_path.strip()
+    file_path = file_path.strip('"')
+    file_path = file_path.strip("'")
+    return file_path
+
+
+def read_syllabus_file(file_path: str) -> str:
+    """
+    Reads a syllabus file.
+
+    Supported:
+    - .txt
+    - .pdf if PyPDF2 is installed
+    """
+
+    file_path = clean_file_path(file_path)
+
+    if not os.path.exists(file_path):
+        print("\nERROR: File not found.")
+        print("Check that the file path is correct.")
+        print("Do not include extra quotation marks unless your terminal adds them automatically.")
+        print(f"Path received: {file_path}")
+        return ""
+
+    extension = os.path.splitext(file_path)[1].lower()
+
+    if extension == ".txt":
+        with open(file_path, "r", encoding="utf-8") as file:
+            return file.read()
+
+    if extension == ".pdf":
+        try:
+            from PyPDF2 import PdfReader
+        except ImportError:
+            print("\nERROR: PDF support requires PyPDF2.")
+            print("Install it with:")
+            print("pip install PyPDF2")
+            return ""
+
+        text = ""
+        reader = PdfReader(file_path)
+
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
+
+        return text
+
+    print("\nERROR: Unsupported file type.")
+    print("Please upload a .txt or .pdf syllabus.")
+    return ""
+
+
+def estimate_difficulty(task_name: str, task_type: str) -> int:
+    text = task_name.lower()
+    difficulty = 4
+
+    if "final" in text:
+        difficulty += 5
+    elif "midterm" in text or "exam" in text:
+        difficulty += 4
+    elif "project" in text or "programming" in text or "coding" in text:
+        difficulty += 4
+    elif "essay" in text or "paper" in text or "lab" in text:
+        difficulty += 3
+    elif "quiz" in text:
+        difficulty += 2
+    elif "homework" in text or "assignment" in text:
+        difficulty += 1
+
+    if task_type == "exam_study":
+        difficulty += 1
+    elif task_type == "quiz_study":
+        difficulty += 1
+
+    return min(difficulty, 10)
+
+
+def estimate_hours(task_type: str, difficulty: int) -> float:
+    if task_type == "exam_study":
+        return max(3, difficulty * 0.7)
+    if task_type == "quiz_study":
+        return max(1.5, difficulty * 0.4)
+    if task_type == "project":
+        return max(4, difficulty * 0.8)
+    if task_type == "essay":
+        return max(3, difficulty * 0.6)
+
+    return max(1, difficulty * 0.35)
+
+
+def classify_task_type(task_name: str) -> str:
+    text = task_name.lower()
+
+    if "final" in text or "midterm" in text or "exam" in text:
+        return "exam_study"
+    if "quiz" in text:
+        return "quiz_study"
+    if "project" in text:
+        return "project"
+    if "essay" in text or "paper" in text:
+        return "essay"
+
+    return "homework"
+
+
+def parse_due_date(date_text: str):
+    date_text = date_text.strip()
+
+    formats = [
+        "%m/%d/%Y",
+        "%m/%d/%y",
+        "%Y-%m-%d",
+        "%b %d %Y",
+        "%B %d %Y",
+        "%b %d, %Y",
+        "%B %d, %Y",
+    ]
+
+    for fmt in formats:
+        try:
+            return datetime.strptime(date_text, fmt)
+        except ValueError:
+            pass
+
+    return None
+
+
+def extract_tasks_from_syllabus(text: str, class_name: str) -> list[Task]:
+    keywords = [
+        "homework", "assignment", "quiz", "exam", "midterm",
+        "final", "project", "essay", "paper", "lab"
+    ]
+
+    date_patterns = [
+        r"\b\d{1,2}/\d{1,2}/\d{2,4}\b",
+        r"\b\d{4}-\d{1,2}-\d{1,2}\b",
+        r"\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}\b",
+    ]
+
+    tasks = []
+    today = datetime.today()
+
+    for line in text.splitlines():
+        clean_line = line.strip()
+
+        if not clean_line:
+            continue
+
+        lower_line = clean_line.lower()
+
+        if not any(keyword in lower_line for keyword in keywords):
+            continue
+
+        due_date_text = "Unknown"
+        due_date_object = None
+
+        for pattern in date_patterns:
+            match = re.search(pattern, clean_line, re.IGNORECASE)
+
+            if match:
+                due_date_text = match.group(0)
+                due_date_object = parse_due_date(due_date_text.replace(".", ""))
+                break
+
+        if due_date_object:
+            days_until_due = max((due_date_object - today).days, 1)
+        else:
+            days_until_due = 30
+
+        task_type = classify_task_type(clean_line)
+        difficulty = estimate_difficulty(clean_line, task_type)
+        hours_needed = estimate_hours(task_type, difficulty)
+
+        tasks.append(
+            Task(
+                name=clean_line,
+                class_name=class_name,
+                due_date=due_date_text,
+                days_until_due=days_until_due,
+                difficulty=difficulty,
+                hours_needed=round(hours_needed, 1),
+                task_type=task_type,
+            )
+        )
+
+    return tasks
 
 
 def calculate_priority(task: Task) -> float:
-    """
-    Calculates a priority score for a task.
-
-    Higher score means the task should be completed earlier.
-    """
-
-    # Assignments due sooner receive higher urgency.
     urgency_score = 10 / max(task.days_until_due, 1)
 
-    # Study blocks receive extra priority so quizzes and exams are not ignored.
     study_bonus = 0
-
     if task.task_type == "quiz_study":
         study_bonus = 3
     elif task.task_type == "exam_study":
         study_bonus = 5
 
-    # Final priority formula.
-    priority = urgency_score + task.difficulty + task.hours_needed + study_bonus
-
-    return priority
+    return urgency_score + task.difficulty + task.hours_needed + study_bonus
 
 
-def create_schedule(tasks):
-    """
-    Creates a recommended task order using a priority queue.
-
-    Python heapq is a min-heap.
-    Negative priority is used so the highest score comes out first.
-    """
-
-    priority_queue = []
+def create_schedule(tasks: list[Task]) -> list[tuple[Task, float]]:
+    heap = []
 
     for index, task in enumerate(tasks):
         priority = calculate_priority(task)
-        heapq.heappush(priority_queue, (-priority, index, task))
+        heapq.heappush(heap, (-priority, index, task))
 
     schedule = []
 
-    while priority_queue:
-        negative_priority, _, task = heapq.heappop(priority_queue)
-        priority = -negative_priority
-        schedule.append((task, priority))
+    while heap:
+        negative_priority, _, task = heapq.heappop(heap)
+        schedule.append((task, round(-negative_priority, 2)))
 
     return schedule
 
 
-def get_letter_grade(score: float) -> str:
-    """
-    Converts a number score into a letter grade.
-    """
+def print_schedule(schedule: list[tuple[Task, float]]) -> None:
+    print("\nADATS Recommended Schedule")
+    print("=" * 70)
 
-    if score >= 90:
-        return "A"
-    elif score >= 80:
-        return "B"
-    elif score >= 70:
-        return "C"
-    elif score >= 60:
-        return "D"
-    else:
-        return "F"
-
-
-def calculate_a_probability(class_progress: ClassProgress) -> float:
-    """
-    Estimates the probability of earning an A.
-
-    The model uses:
-    - 60% homework completion rate
-    - 40% study time completion rate
-
-    This is a simple algorithmic estimate, not a guaranteed prediction.
-    """
-
-    if class_progress.total_homework == 0:
-        homework_rate = 1
-    else:
-        homework_rate = class_progress.completed_homework / class_progress.total_homework
-
-    if class_progress.required_study_hours == 0:
-        study_rate = 1
-    else:
-        study_rate = class_progress.actual_study_hours / class_progress.required_study_hours
-
-    # Cap study rate at 1 so extra studying does not exceed 100%.
-    study_rate = min(study_rate, 1)
-
-    probability = (homework_rate * 0.60 + study_rate * 0.40) * 100
-
-    return round(probability, 2)
-
-
-def print_schedule(schedule):
-    """
-    Prints the ADATS recommended weekly schedule.
-    """
-
-    print("ADATS Recommended Weekly Schedule")
-    print("=" * 50)
-
-    total_hours = 0
+    if not schedule:
+        print("No tasks were found.")
+        print("Try using a syllabus where assignment lines include words like:")
+        print("homework, assignment, quiz, exam, midterm, final, project, essay, lab")
+        return
 
     for rank, (task, priority) in enumerate(schedule, start=1):
-        total_hours += task.hours_needed
-
         print(f"{rank}. {task.name}")
         print(f"   Class: {task.class_name}")
         print(f"   Type: {task.task_type}")
-        print(f"   Due in: {task.days_until_due} day(s)")
-        print(f"   Difficulty: {task.difficulty}/10")
-        print(f"   Hours needed: {task.hours_needed}")
-        print(f"   Priority score: {priority:.2f}")
+        print(f"   Due Date: {task.due_date}")
+        print(f"   Days Until Due: {task.days_until_due}")
+        print(f"   Estimated Difficulty: {task.difficulty}/10")
+        print(f"   Estimated Hours Needed: {task.hours_needed}")
+        print(f"   Priority Score: {priority}")
         print()
 
-    print(f"Total planned homework/study time: {total_hours} hours")
-    print()
 
+def demo_mode():
+    class_name = "Algorithm"
 
-def print_grade_predictions(classes):
+    sample_syllabus = """
+    Homework 1 - Big O Practice due 09/10/2026
+    Quiz 1 - Sorting Algorithms due 09/15/2026
+    Programming Project - Priority Queue Scheduler due 09/25/2026
+    Midterm Exam - Graphs and Dynamic Programming due 10/12/2026
+    Final Exam - Comprehensive Review due 12/10/2026
     """
-    Prints score, letter grade, and chance of earning an A.
-    """
 
-    print("Grade Prediction")
-    print("=" * 50)
+    tasks = extract_tasks_from_syllabus(sample_syllabus, class_name)
+    schedule = create_schedule(tasks)
+    print_schedule(schedule)
 
-    for class_progress in classes:
-        letter_grade = get_letter_grade(class_progress.current_score)
-        a_probability = calculate_a_probability(class_progress)
 
-        print(f"{class_progress.class_name}")
-        print(f"   Current Score: {class_progress.current_score}")
-        print(f"   Predicted Grade: {letter_grade}")
-        print(f"   Homework Completed: {class_progress.completed_homework}/{class_progress.total_homework}")
-        print(f"   Study Hours: {class_progress.actual_study_hours}/{class_progress.required_study_hours}")
-        print(f"   Chance of Getting an A: {a_probability}%")
-        print()
+def upload_syllabus_mode():
+    all_tasks = []
+
+    try:
+        number_of_classes = int(input("How many classes are you taking? "))
+    except ValueError:
+        print("Please enter a valid number.")
+        return
+
+    for i in range(number_of_classes):
+        class_name = input(f"\nEnter class #{i + 1} name: ")
+        file_path = input(f"Enter syllabus file path for {class_name} (.txt or .pdf): ")
+
+        syllabus_text = read_syllabus_file(file_path)
+
+        if not syllabus_text:
+            print(f"No text found for {class_name}. Skipping.")
+            continue
+
+        tasks = extract_tasks_from_syllabus(syllabus_text, class_name)
+        all_tasks.extend(tasks)
+
+        print(f"Found {len(tasks)} possible tasks for {class_name}.")
+
+    schedule = create_schedule(all_tasks)
+    print_schedule(schedule)
 
 
 def main():
-    """
-    Example scenario:
-    A student is taking 5 classes and has about 8 homework assignments
-    due during the week, plus quiz and exam study time.
-    """
+    print("Adaptive Deadline-Aware Task Sorting (ADATS)")
+    print("1. Run demo syllabus")
+    print("2. Upload my syllabus files")
 
-    tasks = [
-        Task("Programming Lab", "Computer Science", 2, 9, 4, "homework"),
-        Task("Python Discussion Post", "Computer Science", 4, 5, 1, "homework"),
+    choice = input("Choose option 1 or 2: ")
 
-        Task("Linear Algebra Homework", "Math", 1, 7, 2, "homework"),
-        Task("Study for Math Quiz", "Math", 2, 8, 2, "quiz_study"),
-
-        Task("Essay Draft", "English", 3, 6, 3, "homework"),
-        Task("Reading Response", "English", 5, 4, 1.5, "homework"),
-
-        Task("CPU Design Worksheet", "Computer Architecture", 2, 8, 3, "homework"),
-        Task("Memory Hierarchy Notes", "Computer Architecture", 4, 6, 2, "homework"),
-
-        Task("Graph Algorithm Assignment", "Algorithm", 1, 9, 3, "homework"),
-        Task("Study for Algorithm Midterm", "Algorithm", 6, 10, 5, "exam_study"),
-    ]
-
-    classes = [
-        ClassProgress("Computer Science", 95, 2, 2, 5, 5),
-        ClassProgress("Math", 88, 1, 2, 2, 3),
-        ClassProgress("English", 91, 2, 2, 3, 3),
-        ClassProgress("Computer Architecture", 84, 2, 2, 3, 4),
-        ClassProgress("Algorithm", 97, 1, 1, 5, 5),
-    ]
-
-    schedule = create_schedule(tasks)
-
-    print_schedule(schedule)
-    print_grade_predictions(classes)
+    if choice == "2":
+        upload_syllabus_mode()
+    else:
+        demo_mode()
 
 
 if __name__ == "__main__":
