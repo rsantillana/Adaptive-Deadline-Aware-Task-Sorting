@@ -33,7 +33,7 @@ def clean_file_path(file_path: str) -> str:
 
     Example problem:
     User enters:
-    "C:\\Users\\renza\\Downloads\\CS460_Course_syllabus (2).pdf"
+    "C:\\Users\\Downloads\\CS460_Course_syllabus.pdf"
 
     The quotation marks become part of the path and Python cannot find the file.
     This function removes those quotation marks.
