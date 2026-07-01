@@ -47,7 +47,6 @@ def clean_file_path(file_path: str) -> str:
 def read_syllabus_file(file_path: str) -> str:
     """
     Reads a syllabus file.
-
     Supported:
     - .txt
     - .pdf if PyPDF2 is installed
@@ -168,6 +167,16 @@ def parse_due_date(date_text: str):
 
 
 def extract_tasks_from_syllabus(text: str, class_name: str) -> list[Task]:
+    """
+    # Read each uploaded syllabus
+    for each syllabus:
+        extract assignments, quizzes, projects, and exams
+
+    This function handles the extraction part. It reads syllabus text line by line,
+    finds task-related keywords, detects due dates, estimates difficulty, and
+    creates Task objects.
+    """
+
     keywords = [
         "homework", "assignment", "quiz", "exam", "midterm",
         "final", "project", "essay", "paper", "lab"
@@ -229,6 +238,17 @@ def extract_tasks_from_syllabus(text: str, class_name: str) -> list[Task]:
 
 
 def calculate_priority(task: Task) -> float:
+    """
+    # Calculate a priority score for every task
+    for each task:
+        difficulty = estimateDifficulty(task)
+        priority = urgency + difficulty + hoursNeeded + studyBonus
+        add task to priorityQueue
+
+    This function calculates:
+        priority = urgency + difficulty + hoursNeeded + studyBonus
+    """
+
     urgency_score = 10 / max(task.days_until_due, 1)
 
     study_bonus = 0
@@ -242,37 +262,35 @@ def calculate_priority(task: Task) -> float:
 
 def create_schedule(tasks: list[Task]) -> list[tuple[Task, float]]:
     """
-    Algorithm: Adaptive Deadline-Aware Task Sorting (ADATS)
+    ADATS Core Scheduling Algorithm
+    # Calculate a priority score for every task
+    for each task:
+        difficulty = estimateDifficulty(task)
+        priority = urgency + difficulty + hoursNeeded + studyBonus
+        add task to priorityQueue
 
-    Input:
-        A list of tasks extracted from uploaded syllabi.
+    # Display the schedule
+    while priorityQueue is not empty:
+        task = removeHighestPriority()
+        display task
 
-    Output:
-        A schedule ordered from highest priority to lowest priority.
-
-    Pseudocode:
-
-    1. Create an empty priority queue.
-    2. For each task:
-         a. Calculate the priority score.
-         b. Insert the task into the priority queue.
-    3. While the priority queue is not empty:
-         a. Remove the highest-priority task.
-         b. Add the task to the final schedule.
-    4. Return the completed schedule.
-
-    Time Complexity: O(n log n)
-    Space Complexity: O(n)
+    Implementation Notes:
+    - Python heapq is a min-heap.
+    - ADATS uses negative priority values so the highest-priority task is removed first.
+    - Time Complexity: O(n log n)
+    - Space Complexity: O(n)
     """
 
     heap = []
 
+    # Add every task into the priority queue.
     for index, task in enumerate(tasks):
         priority = calculate_priority(task)
         heapq.heappush(heap, (-priority, index, task))
 
     schedule = []
 
+    # Remove tasks from highest priority to lowest priority.
     while heap:
         negative_priority, _, task = heapq.heappop(heap)
         schedule.append((task, round(-negative_priority, 2)))
@@ -281,6 +299,15 @@ def create_schedule(tasks: list[Task]) -> list[tuple[Task, float]]:
 
 
 def print_schedule(schedule: list[tuple[Task, float]]) -> None:
+    """
+    # Display the schedule
+    while priorityQueue is not empty:
+        task = removeHighestPriority()
+        display task
+
+    This function displays the final ADATS schedule created by create_schedule().
+    """
+
     print("\nADATS Recommended Schedule")
     print("=" * 70)
 
@@ -319,6 +346,15 @@ def demo_mode():
 
 
 def upload_syllabus_mode():
+    """
+    # Read each uploaded syllabus
+    for each syllabus:
+        extract assignments, quizzes, projects, and exams
+
+    This function asks the student for syllabus files and sends each file to
+    extract_tasks_from_syllabus().
+    """
+
     all_tasks = []
 
     try:
