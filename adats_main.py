@@ -1,6 +1,5 @@
 """
 Adaptive Deadline-Aware Task Sorting (ADATS)
-Syllabus Upload Version - Fixed File Path Version
 
 This version fixes common upload/path problems on Windows:
 - Removes quotation marks around file paths
@@ -242,6 +241,30 @@ def calculate_priority(task: Task) -> float:
 
 
 def create_schedule(tasks: list[Task]) -> list[tuple[Task, float]]:
+    """
+    Algorithm: Adaptive Deadline-Aware Task Sorting (ADATS)
+
+    Input:
+        A list of tasks extracted from uploaded syllabi.
+
+    Output:
+        A schedule ordered from highest priority to lowest priority.
+
+    Pseudocode:
+
+    1. Create an empty priority queue.
+    2. For each task:
+         a. Calculate the priority score.
+         b. Insert the task into the priority queue.
+    3. While the priority queue is not empty:
+         a. Remove the highest-priority task.
+         b. Add the task to the final schedule.
+    4. Return the completed schedule.
+
+    Time Complexity: O(n log n)
+    Space Complexity: O(n)
+    """
+
     heap = []
 
     for index, task in enumerate(tasks):
